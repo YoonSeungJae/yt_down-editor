@@ -42,6 +42,96 @@
   let _dirty = true;
 
   // ════════════════════════════════════════════════════════════
+  // UNDO / REDO HISTORY
+  // ════════════════════════════════════════════════════════════
+  const history = {
+    stack: [], // 스냅샷 배열
+    idx: -1, // 현재 위치
+    MAX: 80, // 최대 히스토리
+    _skip: false, // undo/redo 복원 중 재기록 방지
+  };
+
+  function _snapshotClips() {
+    return S.clips.map((c) => ({
+      id: c.id,
+      fileId: c.fileId,
+      track: c.track,
+      offset: c.offset,
+      trimStart: c.trimStart,
+      trimEnd: c.trimEnd,
+      volume: c.volume,
+      speed: c.speed,
+      color: c.color,
+    }));
+  }
+
+  function _restoreClips(snap) {
+    S.clips = snap.clips.map((d) => {
+      const c = Object.create(Clip.prototype);
+      Object.assign(c, d);
+      return c;
+    });
+    S.tracks = snap.tracks;
+    S.selClipId = snap.selClipId;
+    clipIdSeq = snap.clipIdSeq;
+    for (const [id] of playback.audios) {
+      if (!S.clips.some((c) => c.id === id)) playback.removeClip(id);
+    }
+    updateProperties();
+    requestRender();
+  }
+
+  /** 변경 전 호출 – 현재 상태를 스택에 저장 */
+  function saveUndo() {
+    if (history._skip) return;
+    history.stack.length = history.idx + 1;
+    history.stack.push({
+      clips: _snapshotClips(),
+      tracks: S.tracks,
+      selClipId: S.selClipId,
+      clipIdSeq,
+    });
+    if (history.stack.length > history.MAX) history.stack.shift();
+    history.idx = history.stack.length - 1;
+    _updateUndoButtons();
+  }
+
+  function undo() {
+    if (history.idx <= 0) return;
+    if (history.idx === history.stack.length - 1) {
+      history.stack.push({
+        clips: _snapshotClips(),
+        tracks: S.tracks,
+        selClipId: S.selClipId,
+        clipIdSeq,
+      });
+    }
+    history.idx--;
+    history._skip = true;
+    _restoreClips(history.stack[history.idx]);
+    history._skip = false;
+    _updateUndoButtons();
+    $tlStatus.textContent = "되돌리기";
+  }
+
+  function redo() {
+    if (history.idx >= history.stack.length - 1) return;
+    history.idx++;
+    history._skip = true;
+    _restoreClips(history.stack[history.idx]);
+    history._skip = false;
+    _updateUndoButtons();
+    $tlStatus.textContent = "다시 실행";
+  }
+
+  function _updateUndoButtons() {
+    const btnUndo = document.getElementById("btn-undo");
+    const btnRedo = document.getElementById("btn-redo");
+    if (btnUndo) btnUndo.disabled = history.idx <= 0;
+    if (btnRedo) btnRedo.disabled = history.idx >= history.stack.length - 1;
+  }
+
+  // ════════════════════════════════════════════════════════════
   // CLIP CLASS
   // ════════════════════════════════════════════════════════════
   class Clip {
@@ -271,6 +361,8 @@
       e.target.value = "";
     });
     document.getElementById("btn-settings").addEventListener("click", openSettings);
+    document.getElementById("btn-undo").addEventListener("click", undo);
+    document.getElementById("btn-redo").addEventListener("click", redo);
     document.getElementById("btn-add-track").addEventListener("click", addTrack);
     document.getElementById("btn-clean-tracks").addEventListener("click", cleanTracks);
     document.getElementById("btn-zoom-in").addEventListener("click", () => zoomStep(1));
@@ -299,6 +391,8 @@
     window.addEventListener("resize", resizeCanvas);
     // Render loop
     _renderLoop();
+    // 초기 undo 스냅샷
+    saveUndo();
     console.log("[MediaEditor] init complete, canvasW=", S.canvasW, "canvasH=", S.canvasH);
   }
 
@@ -409,6 +503,7 @@
       const onTr = S.clips.filter((c) => c.track === clip.track);
       clip.offset = onTr.reduce((m, c) => Math.max(m, c.offset + c.clipDuration), 0);
     }
+    saveUndo();
     S.clips.push(clip);
     S.selClipId = clip.id;
     requestRender();
@@ -417,6 +512,7 @@
   }
 
   function removeClip(id) {
+    saveUndo();
     S.clips = S.clips.filter((c) => c.id !== id);
     playback.removeClip(id);
     if (S.selClipId === id) {
@@ -429,6 +525,7 @@
   function splitAtPlayhead(clip) {
     const t = S.playhead;
     if (t <= clip.offset || t >= clip.offset + clip.clipDuration) return;
+    saveUndo();
     const splitPt = clip.trimStart + (t - clip.offset) * clip.speed;
     const nc = clip.clone();
     nc.trimStart = splitPt;
@@ -440,6 +537,7 @@
   }
 
   function duplicateClip(clip) {
+    saveUndo();
     const nc = clip.clone();
     nc.offset = clip.offset + clip.clipDuration;
     S.clips.push(nc);
@@ -447,6 +545,7 @@
   }
 
   function resetTrim(clip) {
+    saveUndo();
     clip.trimStart = 0;
     clip.trimEnd = S.files[clip.fileId].duration;
     requestRender();
@@ -454,6 +553,7 @@
   }
 
   function resetSpeed(clip) {
+    saveUndo();
     clip.speed = 1.0;
     requestRender();
     updateProperties();
@@ -922,6 +1022,7 @@
     if (hit) {
       S.selClipId = hit.clip.id;
       updateProperties();
+      saveUndo(); // 드래그 시작 전 상태 저장
 
       if (hit.mode === "body") {
         drag = {
@@ -1108,6 +1209,7 @@
 
   function reorderTrack(srcTrack, dstTrack) {
     if (srcTrack === dstTrack) return;
+    saveUndo();
     // 트랙을 srcTrack에서 dstTrack 위치로 이동 (insert 방식)
     // 모든 클립의 track 번호를 재배치
     const dir = srcTrack < dstTrack ? 1 : -1;
@@ -1129,6 +1231,7 @@
 
   function splitAtPlayheadTime(clip, t) {
     if (t <= clip.offset || t >= clip.offset + clip.clipDuration) return;
+    saveUndo();
     const splitPt = clip.trimStart + (t - clip.offset) * clip.speed;
     const nc = clip.clone();
     nc.trimStart = splitPt;
@@ -1277,6 +1380,7 @@
   function applyProps() {
     const clip = S.clips.find((c) => c.id === S.selClipId);
     if (!clip) return;
+    saveUndo();
     const file = S.files[clip.fileId];
     clip.offset = Math.max(0, parseFloat($pOffset.value) || 0);
     clip.trimStart = Math.max(0, Math.min(parseFloat($pTrimS.value) || 0, file.duration));
@@ -1482,6 +1586,21 @@
         if (e.ctrlKey) {
           e.preventDefault();
           zoomFit();
+        }
+        break;
+      case "z":
+      case "Z":
+        if (e.ctrlKey) {
+          e.preventDefault();
+          if (e.shiftKey) redo();
+          else undo();
+        }
+        break;
+      case "y":
+      case "Y":
+        if (e.ctrlKey) {
+          e.preventDefault();
+          redo();
         }
         break;
     }
