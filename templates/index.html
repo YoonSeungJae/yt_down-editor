@@ -65,7 +65,15 @@
         <div class="panel-header">🖥 미리보기</div>
         <div id="preview-body" class="panel-body">
           <video id="preview-video"></video>
+          <img id="preview-cover" style="display: none" />
           <div id="preview-placeholder">미디어 파일을 Import하세요</div>
+          <div id="cover-controls">
+            <label class="cover-btn" title="썸네일 설정">
+              🖼 썸네일
+              <input type="file" id="cover-input" accept=".png,.jpg,.jpeg,.bmp,.webp" hidden />
+            </label>
+            <button id="btn-cover-remove" class="cover-btn remove" title="썸네일 제거" style="display: none">✕</button>
+          </div>
         </div>
       </div>
 
@@ -163,6 +171,6 @@
       </div>
     </div>
 
-    <script src="/static/editor.js?v=11"></script>
+    <script src="/static/editor.js?v=12"></script>
   </body>
 </html>

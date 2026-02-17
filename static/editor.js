@@ -170,6 +170,8 @@
   // ════════════════════════════════════════════════════════════
   let $c, ctx; // canvas & context
   let $video, $placeholder, $fileList, $fileInput, $timecode;
+  let $coverImg, $coverInput, $coverRemoveBtn;
+  let hasCoverImage = false;
   let $propsContent, $propsEmpty;
   let $pName, $pType, $pDur, $pTrack, $pOffset, $pTrimS, $pTrimE, $pVolume, $pVolumeSlider, $pSpeed;
   let $exportProgress, $exportFill, $exportText, $tlStatus;
@@ -321,6 +323,14 @@
     $scrollThumb = document.getElementById("tl-scroll-thumb");
     $vScrollbar = document.getElementById("tl-vscrollbar");
     $vScrollThumb = document.getElementById("tl-vscroll-thumb");
+    $coverImg = document.getElementById("preview-cover");
+    $coverInput = document.getElementById("cover-input");
+    $coverRemoveBtn = document.getElementById("btn-cover-remove");
+
+    // Cover image events
+    $coverInput.addEventListener("change", onCoverSelect);
+    $coverRemoveBtn.addEventListener("click", onCoverRemove);
+    _checkExistingCover();
 
     // Canvas events
     $c.addEventListener("mousedown", onMouseDown);
@@ -1423,6 +1433,17 @@
         $video.currentTime = t;
       }
       $video.style.display = "block";
+      $coverImg.style.display = "none";
+      $placeholder.style.display = "none";
+    } else if (hasCoverImage) {
+      // 비디오 클립 없으면 커버 이미지 표시
+      if ($video.style.display !== "none") {
+        $video.pause();
+        $video.removeAttribute("src");
+        $video.load();
+        $video.style.display = "none";
+      }
+      $coverImg.style.display = "block";
       $placeholder.style.display = "none";
     } else {
       // 클립 범위 밖이면 검은 화면 표시
@@ -1431,9 +1452,68 @@
         $video.removeAttribute("src");
         $video.load();
         $video.style.display = "none";
-        $placeholder.style.display = "";
       }
+      $coverImg.style.display = "none";
+      $placeholder.style.display = "";
     }
+  }
+
+  // ════════════════════════════════════════════════════════════
+  // COVER IMAGE (썸네일 / 오디오 전용 배경)
+  // ════════════════════════════════════════════════════════════
+  async function _checkExistingCover() {
+    try {
+      const r = await fetch("/api/cover");
+      if (r.ok && r.status === 200) {
+        const blob = await r.blob();
+        if (blob.size > 0) {
+          $coverImg.src = URL.createObjectURL(blob);
+          hasCoverImage = true;
+          $coverRemoveBtn.style.display = "";
+          updateVideoPreview();
+        }
+      }
+    } catch (e) {
+      /* ignore */
+    }
+  }
+
+  async function onCoverSelect(e) {
+    const file = e.target.files[0];
+    if (!file) return;
+    e.target.value = "";
+    const fd = new FormData();
+    fd.append("image", file);
+    try {
+      const r = await fetch("/api/cover/upload", { method: "POST", body: fd });
+      if (!r.ok) {
+        const d = await r.json();
+        $tlStatus.textContent = `커버 오류: ${d.error}`;
+        return;
+      }
+      // 성공 → 미리보기 갱신
+      $coverImg.src = "/api/cover?" + Date.now();
+      hasCoverImage = true;
+      $coverRemoveBtn.style.display = "";
+      updateVideoPreview();
+      $tlStatus.textContent = "커버 이미지 설정 완료";
+    } catch (err) {
+      $tlStatus.textContent = `커버 업로드 실패: ${err.message}`;
+    }
+  }
+
+  async function onCoverRemove() {
+    try {
+      await fetch("/api/cover", { method: "DELETE" });
+    } catch (e) {
+      /* ignore */
+    }
+    hasCoverImage = false;
+    $coverImg.removeAttribute("src");
+    $coverImg.style.display = "none";
+    $coverRemoveBtn.style.display = "none";
+    updateVideoPreview();
+    $tlStatus.textContent = "커버 이미지 제거됨";
   }
 
   // ════════════════════════════════════════════════════════════
