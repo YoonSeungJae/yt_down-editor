@@ -1,0 +1,164 @@
+<!doctype html>
+<html lang="ko">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Media Editor</title>
+    <link rel="stylesheet" href="/static/style.css?v=8" />
+  </head>
+  <body>
+    <!-- ─── Toolbar ─── -->
+    <div id="toolbar">
+      <div class="tb-group">
+        <label class="tb-btn import-btn" title="가져오기 (Ctrl+I)">
+          📂 가져오기
+          <input type="file" id="file-input" multiple accept=".mp3,.mp4" hidden />
+        </label>
+      </div>
+      <div class="tb-group">
+        <button id="btn-save-project" class="tb-btn" title="프로젝트 저장 (Ctrl+S)">💾 저장</button>
+        <button id="btn-load-project" class="tb-btn" title="프로젝트 열기 (Ctrl+O)">📁 열기</button>
+        <input type="file" id="project-file-input" accept=".meproj" hidden />
+      </div>
+      <div class="tb-group">
+        <button class="tb-btn tool-btn active" data-tool="select" title="선택 도구 (V)">↖ 선택</button>
+        <button class="tb-btn tool-btn" data-tool="razor" title="자르기 도구 (C)">✂ 자르기</button>
+      </div>
+      <div class="tb-group tb-transport">
+        <button id="btn-prev" class="tb-btn" title="처음으로 (Home)">⏮</button>
+        <button id="btn-play" class="tb-btn play-btn" title="재생 / 일시정지 (Space)">▶</button>
+        <button id="btn-stop" class="tb-btn" title="정지">⏹</button>
+        <span id="timecode" class="timecode">00:00.000</span>
+      </div>
+      <div class="tb-group" style="margin-left: auto">
+        <button id="btn-settings" class="tb-btn" title="설정">⚙</button>
+        <button id="btn-show-props" class="tb-btn" title="속성 패널 열기" style="display: none">⚙ 속성</button>
+        <input id="export-filename" type="text" placeholder="파일명" value="export" class="export-name-input" />
+        <select id="export-format">
+          <option value="mp4">MP4</option>
+          <option value="mp3">MP3</option>
+        </select>
+        <button id="btn-export" class="tb-btn export-btn" title="내보내기">💾 내보내기</button>
+      </div>
+    </div>
+
+    <!-- ─── Main Panels ─── -->
+    <div id="panels">
+      <!-- Project -->
+      <div id="project-panel" class="panel">
+        <div class="panel-header">📂 프로젝트</div>
+        <div id="file-list" class="panel-body"></div>
+        <div class="panel-footer">
+          <span id="file-count">0개 파일</span>
+        </div>
+      </div>
+
+      <!-- Resize handle: Project ↔ Preview -->
+      <div id="panel-resize-left" class="panel-resizer"></div>
+
+      <!-- Preview -->
+      <div id="preview-panel" class="panel">
+        <div class="panel-header">🖥 미리보기</div>
+        <div id="preview-body" class="panel-body">
+          <video id="preview-video"></video>
+          <div id="preview-placeholder">미디어 파일을 Import하세요</div>
+        </div>
+      </div>
+
+      <!-- Resize handle: Preview ↔ Properties -->
+      <div id="panel-resize-right" class="panel-resizer"></div>
+
+      <!-- Properties -->
+      <div id="props-panel" class="panel">
+        <div class="panel-header">
+          <span>⚙ 속성</span>
+          <button id="btn-toggle-props" class="panel-toggle-btn" title="속성 패널 닫기">✕</button>
+        </div>
+        <div id="props-body" class="panel-body">
+          <div id="props-empty">클립을 선택하세요</div>
+          <div id="props-content" style="display: none">
+            <div class="prop-row"><label>이름</label><span id="p-name"></span></div>
+            <div class="prop-row"><label>유형</label><span id="p-type"></span></div>
+            <div class="prop-row"><label>길이</label><span id="p-dur"></span></div>
+            <div class="prop-row"><label>트랙</label><span id="p-track"></span></div>
+            <hr />
+            <div class="prop-row"><label>위치 (초)</label><input id="p-offset" type="number" step="0.1" min="0" /></div>
+            <div class="prop-row"><label>시작 지점 (초)</label><input id="p-trim-s" type="number" step="0.1" min="0" /></div>
+            <div class="prop-row"><label>끝 지점 (초)</label><input id="p-trim-e" type="number" step="0.1" min="0" /></div>
+            <hr />
+            <div class="prop-row"><label>🔊 볼륨 (%)</label><input id="p-volume" type="number" step="5" min="0" max="300" /></div>
+            <div class="prop-row vol-slider-row">
+              <input id="p-volume-slider" type="range" min="0" max="300" step="1" />
+            </div>
+            <div class="prop-row"><label>⏩ 배속 (x)</label><input id="p-speed" type="number" step="0.05" min="0.1" max="10" value="1.00" /></div>
+            <button id="p-apply" class="prop-apply">적용</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Resize Handle ─── -->
+    <div id="resize-handle"></div>
+
+    <!-- ─── Timeline ─── -->
+    <div id="timeline-panel">
+      <div id="tl-header">
+        <span class="tl-title">🎞 타임라인</span>
+        <div id="tl-controls">
+          <button id="btn-add-track" class="tl-btn" title="트랙 추가">+ 트랙</button>
+          <button id="btn-clean-tracks" class="tl-btn" title="빈 트랙 정리">정리</button>
+          <span class="tl-sep"></span>
+          <button id="btn-zoom-out" class="tl-btn">−</button>
+          <span id="zoom-label" class="tl-zoom">50 px/s</span>
+          <button id="btn-zoom-in" class="tl-btn">+</button>
+          <button id="btn-zoom-fit" class="tl-btn">맞춤</button>
+        </div>
+      </div>
+      <div id="tl-body-wrapper">
+        <div id="tl-body">
+          <canvas id="tl-canvas" tabindex="0"></canvas>
+        </div>
+        <div id="tl-vscrollbar">
+          <div id="tl-vscroll-thumb"></div>
+        </div>
+      </div>
+      <div id="tl-scrollbar">
+        <div id="tl-scroll-thumb"></div>
+      </div>
+      <div id="tl-footer">
+        <span id="tl-status">준비</span>
+        <div id="export-progress" style="display: none">
+          <div id="export-bar"><div id="export-fill"></div></div>
+          <span id="export-text">0%</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- ─── Settings Modal ─── -->
+    <div id="settings-overlay" class="modal-overlay" style="display: none">
+      <div class="modal settings-modal">
+        <h3>⚙ 경로 설정</h3>
+        <div class="settings-row">
+          <label>프로젝트 저장 경로</label>
+          <div class="settings-input-wrap">
+            <input id="set-project-dir" type="text" class="settings-input" placeholder="프로젝트 저장 폴더" />
+            <button id="set-project-browse" class="settings-browse" title="폴더 선택">📂</button>
+          </div>
+        </div>
+        <div class="settings-row">
+          <label>내보내기 저장 경로</label>
+          <div class="settings-input-wrap">
+            <input id="set-export-dir" type="text" class="settings-input" placeholder="내보내기 저장 폴더" />
+            <button id="set-export-browse" class="settings-browse" title="폴더 선택">📂</button>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button id="set-cancel" class="settings-btn secondary">취소</button>
+          <button id="set-save" class="settings-btn primary">저장</button>
+        </div>
+      </div>
+    </div>
+
+    <script src="/static/editor.js?v=10"></script>
+  </body>
+</html>

@@ -1,0 +1,33 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.egg-info/
+dist/
+build/
+*.egg
+.venv/
+venv/
+env/
+
+# Workspace media & data files
+workspace/*.mp3
+workspace/*.mp4
+workspace/*.wav
+workspace/*.webm
+workspace/*.peaks.json
+workspace/_projects/
+
+# IDE
+.vscode/
+.idea/
+
+# Binaries
+*.exe
+
+# OS
+Thumbs.db
+.DS_Store
+
+# Settings (may contain local config)
+settings.json
