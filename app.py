@@ -131,6 +131,35 @@ def upload_files():
         results.append(entry)
     return jsonify(results)
 
+# ─── 커버 이미지 (썸네일 / 오디오 전용 배경) ──────────────
+cover_image_path = None  # 현재 설정된 커버 이미지 경로
+
+@app.route('/api/cover/upload', methods=['POST'])
+def upload_cover():
+    global cover_image_path
+    f = request.files.get('image')
+    if not f:
+        return jsonify({'error': 'No image'}), 400
+    ext = os.path.splitext(f.filename)[1].lower()
+    if ext not in ('.png', '.jpg', '.jpeg', '.bmp', '.webp'):
+        return jsonify({'error': 'Unsupported format'}), 400
+    save_path = os.path.join(WORKSPACE, f'_cover{ext}')
+    f.save(save_path)
+    cover_image_path = save_path
+    return jsonify({'status': 'ok', 'path': save_path})
+
+@app.route('/api/cover')
+def get_cover():
+    if cover_image_path and os.path.exists(cover_image_path):
+        return send_file(cover_image_path)
+    return '', 204
+
+@app.route('/api/cover', methods=['DELETE'])
+def delete_cover():
+    global cover_image_path
+    cover_image_path = None
+    return jsonify({'status': 'ok'})
+
 @app.route('/api/files')
 def list_files():
     return jsonify(list(files_db.values()))
@@ -439,6 +468,20 @@ def _do_export(clips, out_path, fmt, duration=None):
 
         # ── 비디오: 검은화면 채움 + 해상도 통일 후 concat ──
         final_v = None
+
+        # 커버 이미지로 오디오 전용 MP4에 배경 이미지 적용
+        use_cover_as_video = (audio_only and fmt == 'mp4'
+                              and cover_image_path and os.path.exists(cover_image_path))
+        if use_cover_as_video:
+            cover_inp_idx = len(input_map)
+            cmd.extend(['-loop', '1', '-i', cover_image_path])
+            parts.append(
+                f"[{cover_inp_idx}:v]scale=1920:1080:force_original_aspect_ratio=decrease,"
+                f"pad=1920:1080:(ow-iw)/2:(oh-ih)/2,setsar=1,fps=1[coverv]"
+            )
+            final_v = "[coverv]"
+            audio_only = False  # 비디오 트랙 생성됨
+
         if not audio_only and video_entries:
             video_entries.sort()
             # 모든 비디오 클립 중 최대 해상도 구하기
